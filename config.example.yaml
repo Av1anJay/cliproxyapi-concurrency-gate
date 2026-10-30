@@ -1,0 +1,44 @@
+# Example: CLIProxyAPI plugin config for concurrency-gate.
+#
+# Copy the `plugins:` block into your CPA config.yaml and drop
+# concurrency-gate-go.so into the configured plugins dir.
+
+plugins:
+  enabled: true
+  dir: "/etc/cliproxyapi/plugins"
+  configs:
+    concurrency-gate:
+      enabled: true
+      priority: 10
+
+      # Ceiling for any bucket without a matching rule. 0 = unlimited.
+      default_limit: 2
+
+      # account | upstream | provider
+      key_by: upstream
+
+      # Append "|<model>" to the bucket key.
+      per_model: false
+
+      # reject (fast 429) | wait (FIFO queue up to wait_timeout_ms)
+      on_limit: reject
+      wait_timeout_ms: 30000
+
+      reject_status_code: 429
+      retry_after_seconds: 1
+      state_ttl_seconds: 1800
+
+      log_decisions: false
+      least_loaded_pick: true
+      expose_management_api: true
+
+      # Narrowest rules first: the first match wins.
+      limits:
+        # Compact string form.
+        - "upstream:openrouter=1"
+        - "provider:codex=4"
+        - "label:prod*=3"
+        # Mapping form, optionally scoped to models.
+        - match: "compat:deepseek"
+          limit: 2
+          models: ["deepseek-reasoner", "deepseek-chat"]

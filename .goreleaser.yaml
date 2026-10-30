@@ -1,0 +1,60 @@
+version: 2
+
+project_name: concurrency-gate
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: linux-amd64
+    main: .
+    binary: concurrency-gate-go
+    goos: [linux]
+    goarch: [amd64]
+    env:
+      - CGO_ENABLED=1
+      - CC=gcc
+    buildmode: c-shared
+    flags: [-trimpath]
+    ldflags: [-s -w]
+
+  - id: linux-arm64
+    main: .
+    binary: concurrency-gate-go
+    goos: [linux]
+    goarch: [arm64]
+    env:
+      - CGO_ENABLED=1
+      - CC=aarch64-linux-gnu-gcc
+    buildmode: c-shared
+    flags: [-trimpath]
+    ldflags: [-s -w]
+
+  - id: darwin-arm64
+    main: .
+    binary: concurrency-gate-go
+    goos: [darwin]
+    goarch: [arm64]
+    env:
+      - CGO_ENABLED=1
+    buildmode: c-shared
+    flags: [-trimpath]
+    ldflags: [-s -w]
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
