@@ -103,6 +103,7 @@ After every scenario `in_flight_total` returns to `0` and `admitted == released`
 - **Rejection status.** Scheduler-level rejection cannot carry an HTTP status through `SchedulerPickResponse`, so the plugin never rejects from the scheduler. When every candidate is saturated it delegates to the host selector (`scheduler_delegated`) and the after-auth interceptor produces the clean `429` + `Retry-After`. If you see `500` on rejection, the gate is not the source.
 - **Bucket identity depends on host metadata.** `request.intercept_after` exposes only `selected_auth_id` / `selected_auth_index`. `base_url` and `compat_name` are learned from `scheduler.pick` candidates and `host.auth.list`, so `key_by: upstream` needs at least one scheduler pick per credential. Until then the bucket falls back to `unknown|<model>`.
 - One `openai-compatibility` block with several `keys:` becomes **one** auth entry in CPA, not one per key. Use separate `openai-compatibility` blocks (or separate auth files) if you want per-key buckets.
+- `plugins.configs.concurrency-gate.enabled: false` makes the **host** skip loading the plugin entirely, so the management resources also disappear (the endpoint returns `404`). The plugin's own `enabled` field only matters for a hot reconfigure.
 - The gate counts requests, not tokens. Token/TPM shaping is out of scope.
 
 ## Build
