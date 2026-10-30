@@ -98,6 +98,19 @@ End-to-end against a real `cli-proxy-api` v8.0.47 binary with local fake upstrea
 
 After every scenario `in_flight_total` returns to `0` and `admitted == released`, i.e. no slot leaks on success, failure, cancel or stream end.
 
+## Compatibility
+
+The plugin negotiates the RPC schema version with the host instead of hard-coding the SDK it was compiled against. A host older than the plugin's SDK rejects any registration advertising a newer schema (`plugin schema version N is not supported`), so the plugin echoes back the host's own version:
+
+| CPA version | Host schema | Supported |
+| --- | --- | --- |
+| v8.0.47+ | 8 | yes |
+| v8.0.45 – v8.0.46 | 7 | yes |
+| v8.0.40 – v8.0.44 | 6 | yes |
+| older than v8.0.40 | < 6 | no — `request.complete` is unavailable |
+
+The agreed versions are visible at `/v0/resource/plugins/concurrency-gate/status` as `host_schema_version` and `plugin_schema_version`. If they differ, the plugin is running in a reduced-compatibility mode.
+
 ## Notes and limitations
 
 - **Rejection status.** Scheduler-level rejection cannot carry an HTTP status through `SchedulerPickResponse`, so the plugin never rejects from the scheduler. When every candidate is saturated it delegates to the host selector (`scheduler_delegated`) and the after-auth interceptor produces the clean `429` + `Retry-After`. If you see `500` on rejection, the gate is not the source.

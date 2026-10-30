@@ -80,7 +80,45 @@ var (
 	state   = newGate(defaultConfig())
 	// sweepOnce starts the janitor exactly once per process.
 	sweepOnce sync.Once
+
+	// schemaMu guards the schema version agreed with the host. A host older than
+	// the SDK this plugin was built against rejects any registration advertising a
+	// newer schema, so the plugin must echo back the host's own version.
+	schemaMu       sync.RWMutex
+	negotiatedVer  = pluginabi.SchemaVersion
+	hostSchemaSeen uint32
 )
+
+// negotiateSchema records the schema version to advertise. The host passes its
+// own compiled version in the lifecycle request; advertising anything higher is
+// rejected with "plugin schema version N is not supported".
+func negotiateSchema(hostVersion uint32) uint32 {
+	if hostVersion == 0 {
+		// Missing schema_version is treated as the original contract.
+		hostVersion = 1
+	}
+	agreed := hostVersion
+	if pluginabi.SchemaVersion < agreed {
+		agreed = pluginabi.SchemaVersion
+	}
+	schemaMu.Lock()
+	negotiatedVer = agreed
+	hostSchemaSeen = hostVersion
+	schemaMu.Unlock()
+	return agreed
+}
+
+func currentSchemaVersion() uint32 {
+	schemaMu.RLock()
+	defer schemaMu.RUnlock()
+	return negotiatedVer
+}
+
+func hostSchemaVersion() uint32 {
+	schemaMu.RLock()
+	defer schemaMu.RUnlock()
+	return hostSchemaSeen
+}
 
 type envelope struct {
 	OK     bool            `json:"ok"`
@@ -205,8 +243,9 @@ func configure(raw []byte) error {
 		}
 	}
 	if req.SchemaVersion < minSchemaVersion {
-		return fmt.Errorf("concurrency-gate requires host schema version %d or newer (got %d)", minSchemaVersion, req.SchemaVersion)
+		return fmt.Errorf("concurrency-gate requires host schema version %d or newer (got %d); upgrade CLIProxyAPI", minSchemaVersion, req.SchemaVersion)
 	}
+	negotiateSchema(req.SchemaVersion)
 	cfg := defaultConfig()
 	if len(req.ConfigYAML) > 0 {
 		if errUnmarshal := yaml.Unmarshal(req.ConfigYAML, &cfg); errUnmarshal != nil {
@@ -251,7 +290,7 @@ func startJanitor() {
 
 func pluginRegistration() registration {
 	return registration{
-		SchemaVersion: pluginabi.SchemaVersion,
+		SchemaVersion: currentSchemaVersion(),
 		Metadata: pluginapi.Metadata{
 			Name:             pluginID,
 			Version:          pluginVersion,

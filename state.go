@@ -330,6 +330,10 @@ type gateSnapshot struct {
 	Buckets        []bucketSnapshot `json:"buckets"`
 	InFlight       int              `json:"in_flight_total"`
 	Stats          gateStats        `json:"stats"`
+	// HostSchema / PluginSchema make version mismatches visible without digging
+	// through host logs.
+	HostSchema   uint32 `json:"host_schema_version"`
+	PluginSchema uint32 `json:"plugin_schema_version"`
 }
 
 func (g *gate) snapshot() gateSnapshot {
@@ -346,6 +350,8 @@ func (g *gate) snapshot() gateSnapshot {
 		Limits:         append([]limitRule(nil), g.cfg.Limits...),
 		InFlight:       len(g.entries),
 		Stats:          g.stats,
+		HostSchema:     hostSchemaVersion(),
+		PluginSchema:   currentSchemaVersion(),
 	}
 	for key, bucket := range g.buckets {
 		out.Buckets = append(out.Buckets, bucketSnapshot{

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"gopkg.in/yaml.v3"
 )
@@ -611,5 +612,73 @@ func TestExampleConfigParses(t *testing.T) {
 	}
 	if cfg.Limits[3].modelsMatch("gpt-5") {
 		t.Fatal("model-scoped rule matched an unrelated model")
+	}
+}
+
+// TestSchemaNegotiationEchoesHostVersion guards the compatibility contract: a
+// host older than the SDK the plugin was built against rejects any registration
+// advertising a newer schema ("plugin schema version N is not supported").
+func TestSchemaNegotiationEchoesHostVersion(t *testing.T) {
+	cases := []struct {
+		host uint32
+		want uint32
+	}{
+		{host: 2, want: 2},
+		{host: 6, want: 6},
+		{host: 7, want: 7},
+		{host: 8, want: 8},
+		{host: 0, want: 1},
+	}
+	for _, tc := range cases {
+		if got := negotiateSchema(tc.host); got != tc.want {
+			t.Fatalf("negotiateSchema(%d) = %d, want %d", tc.host, got, tc.want)
+		}
+		if got := currentSchemaVersion(); got != tc.want {
+			t.Fatalf("currentSchemaVersion() = %d, want %d", got, tc.want)
+		}
+		if got := pluginRegistration().SchemaVersion; got != tc.want {
+			t.Fatalf("registration schema = %d, want %d", got, tc.want)
+		}
+	}
+	// A host newer than the SDK must not make the plugin claim a version it
+	// cannot implement.
+	if got := negotiateSchema(pluginabi.SchemaVersion + 5); got != pluginabi.SchemaVersion {
+		t.Fatalf("future host negotiated %d, want %d", got, pluginabi.SchemaVersion)
+	}
+}
+
+// TestRegisterAgainstOldHostSucceeds proves the registration path works end to
+// end for an old host instead of erroring out.
+func TestRegisterAgainstOldHostSucceeds(t *testing.T) {
+	raw, errMarshal := json.Marshal(lifecycleRequest{
+		SchemaVersion: 6,
+		ConfigYAML:    []byte("default_limit: 2\nkey_by: upstream\n"),
+	})
+	if errMarshal != nil {
+		t.Fatalf("marshal request: %v", errMarshal)
+	}
+	out, errHandle := handleMethod(pluginabi.MethodPluginRegister, raw)
+	if errHandle != nil {
+		t.Fatalf("handleMethod(plugin.register) error = %v", errHandle)
+	}
+	var env envelope
+	if errUnmarshal := json.Unmarshal(out, &env); errUnmarshal != nil {
+		t.Fatalf("unmarshal envelope: %v", errUnmarshal)
+	}
+	if !env.OK {
+		t.Fatalf("register failed: %+v", env.Error)
+	}
+	var reg registration
+	if errUnmarshal := json.Unmarshal(env.Result, &reg); errUnmarshal != nil {
+		t.Fatalf("unmarshal registration: %v", errUnmarshal)
+	}
+	if reg.SchemaVersion != 6 {
+		t.Fatalf("registration schema = %d, want 6 (host version)", reg.SchemaVersion)
+	}
+	if reg.Metadata.Name != pluginID {
+		t.Fatalf("metadata name = %q, want %q", reg.Metadata.Name, pluginID)
+	}
+	if !reg.Capabilities.RequestInterceptor || !reg.Capabilities.RequestLifecyclePlugin || !reg.Capabilities.Scheduler {
+		t.Fatalf("capabilities incomplete: %+v", reg.Capabilities)
 	}
 }
